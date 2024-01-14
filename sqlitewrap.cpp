@@ -100,3 +100,25 @@ bool SqliteWrap::delete_db(const std::string &db_name)
 
     return true;
 }
+
+bool SqliteWrap::execute_sql(const std::string &sql)
+{
+    if (!db)
+    {
+        std::cerr << "Error: Database not connected." << std::endl;
+        return false;
+    }
+
+    char* errorMessage = nullptr;
+
+    int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errorMessage);
+
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "SQL error: " << errorMessage << std::endl;
+        sqlite3_free(errorMessage);
+        return false;
+    }
+
+    return true;
+}

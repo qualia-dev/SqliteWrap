@@ -17,6 +17,8 @@ public:
     bool create_db(const std::string& db_name);
     bool delete_db(const std::string& db_name);
 
+    bool execute_sql(const std::string& sql);
+
 private:
     sqlite3* db = nullptr;
 };
