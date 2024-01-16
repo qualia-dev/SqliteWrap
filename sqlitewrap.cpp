@@ -124,7 +124,7 @@ bool SqliteWrap::execute_sql(const std::string &sql)
     return true;
 }
 
-bool SqliteWrap::select_count_async (const std::string &table, const std::string &condition, int &count)
+bool SqliteWrap::select_count_sync (const std::string &table, const std::string &condition, int &count)
 {
     if (!_db)
     {
@@ -164,13 +164,16 @@ bool SqliteWrap::select_count (const std::string &table, const std::string &cond
 }
 
 
-bool SqliteWrap::select(const std::string &table, const std::string &condition, void* user_param, int (*callback)(void*,int,char**,char**), std::string &result)
+bool SqliteWrap::select(const std::string &table, const std::string &condition, void* user_param, int (*callback)(void*,int,char**,char**), int &count)
 {
     if (!_db)
     {
         std::cerr << "Error: Database not connected." << std::endl;
         return false;
     }
+
+    // get the number of rows
+    if (!select_count_sync(table, condition, count)) return false;
 
     char *errorMessage = nullptr;
 

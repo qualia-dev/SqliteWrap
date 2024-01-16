@@ -21,8 +21,8 @@ public:
 
     // select command
     bool select_count (const std::string &table, const std::string &condition, int &count);
-    bool select_count_async (const std::string &table, const std::string &condition, int &count);
-    bool select(const std::string &table, const std::string &condition, void* user_param, int (*callback)(void*,int,char**,char**), std::string &result);
+    bool select_count_sync (const std::string &table, const std::string &condition, int &count);
+    bool select(const std::string &table, const std::string &condition, void* user_param, int (*callback)(void*,int,char**,char**), int &count);
 
 private:
     sqlite3* _db = nullptr;
