@@ -1,3 +1,4 @@
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <ostream>
@@ -157,12 +158,6 @@ bool SqliteWrap::select_count_sync (const std::string &table, const std::string 
     return true;
 }
 
-bool SqliteWrap::select_count (const std::string &table, const std::string &condition, int &count)
-{
-
-    return true;
-}
-
 
 bool SqliteWrap::select(const std::string &table, const std::string &condition, void* user_param, int (*callback)(void*,int,char**,char**), int &count)
 {
@@ -198,6 +193,69 @@ bool SqliteWrap::select(const std::string &table, const std::string &condition, 
 
     return true;
 }
+
+bool SqliteWrap::select_sync(const std::string &table, const std::string &condition, void* user_param, DeserializeCallback callback )
+{
+    if (!_db)
+    {
+        std::cerr << "Error: Database not connected." << std::endl;
+        return false;
+    }
+
+    std::string sql = "SELECT * FROM " + table;
+    if (!condition.empty()) sql += " WHERE " + condition;
+    sql += ";";
+
+    sqlite3_stmt *statement = nullptr;
+
+    sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0);        // prepare our query
+
+    int rc = 0;
+
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW)            // execute sqlite3_step while there are rows to be fetched
+    {
+        int column_count = sqlite3_column_count(statement);
+
+        char** col_values = new char*[column_count];
+        for (int i = 0; i < column_count; i++)
+        {
+            const unsigned char* column_text = sqlite3_column_text(statement, i);
+
+            if (column_text)
+            {
+                std::string col_text_str(reinterpret_cast<const char*>(column_text));
+                col_values[i] = new char[col_text_str.size() + 1];
+                std::strcpy(col_values[i], col_text_str.c_str());
+            }
+            else
+            {
+                col_values[i] = nullptr;
+            }
+        }
+
+        if (!callback(user_param, col_values, column_count))
+        {
+            delete[] col_values;
+            sqlite3_finalize(statement);
+            return false;
+        }
+
+        delete[] col_values;
+    }
+
+    if (rc != SQLITE_DONE)
+    {
+        sqlite3_finalize(statement);                 // free our statement
+        return false;
+    }
+
+    sqlite3_finalize(statement);                 // free our statement
+
+    return true;
+}
+
+
+
 
 
 
