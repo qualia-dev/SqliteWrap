@@ -27,7 +27,12 @@ public:
     bool select(const std::string &table, const std::string &condition, void* user_param, int (*callback)(void*,int,char**,char**), int &count);
 
     bool select_sync(const std::string &table, const std::string &condition, void* user_param, DeserializeCallback callback );
-    //bool select_sync(const std::string &table, const std::string &condition, std::vector <std::string> &v_results_str);
+
+    bool get_sqlite_version (std::string &version);
+    bool get_database_name (std::string &db_name);
+    bool get_table_list(std::string& query, std::vector<std::string>& tablelist);
+    bool get_database_schema(const std::string& pathfile);
+    bool execute_sql_schema(const std::string& pathfile);
 
 private:
     sqlite3* _db = nullptr;

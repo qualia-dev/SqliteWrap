@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <iostream>
 #include <ostream>
+#include <fstream>
 
 #include "sqlitewrap.h"
 
@@ -202,7 +203,7 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
         return false;
     }
 
-    std::string sql = "SELECT * FROM " + table;
+    std::string sql = "SELECT * FROM " +  table;
     if (!condition.empty()) sql += " WHERE " + condition;
     sql += ";";
 
@@ -210,8 +211,7 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
 
     sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0);        // prepare our query
 
-    int rc = 0;
-
+    int rc;
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW)            // execute sqlite3_step while there are rows to be fetched
     {
         int column_count = sqlite3_column_count(statement);
@@ -243,6 +243,8 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
         delete[] col_values;
     }
 
+    std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+
     if (rc != SQLITE_DONE)
     {
         sqlite3_finalize(statement);                 // free our statement
@@ -254,6 +256,171 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
     return true;
 }
 
+bool SqliteWrap::get_table_list(std::string& query, std::vector<std::string>& tablelist)
+{
+    //const char* query = "SELECT name FROM sqlite_master WHERE type='table';";
+    sqlite3_stmt* statement = nullptr;
+
+    sqlite3_prepare_v2(_db, query.c_str(), -1, &statement, 0);
+
+    int rc;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        // Retrieve and store the table name
+        const char* t = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
+        std::cout << "Table Name: " << t << std::endl;
+        tablelist.push_back(t);
+    }
+
+    // Check for errors or no tables found
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        sqlite3_finalize(statement);
+        return false;
+    }
+
+    // Don't forget to finalize the statement
+    sqlite3_finalize(statement);
+
+    return true;
+}
+
+bool SqliteWrap::get_sqlite_version(std::string &version)
+{
+    const char* pingQuery = "SELECT sqlite_version();";
+    sqlite3_stmt *pingStatement = nullptr;
+
+    sqlite3_prepare_v2(_db, pingQuery, -1, &pingStatement, 0);
+
+    int rc = sqlite3_step(pingStatement);
+
+    if (rc != SQLITE_ROW) {
+        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        sqlite3_finalize(pingStatement); // Don't forget to finalize the statement
+        return false;
+    }
+
+    // Retrieve and print the SQLite version
+    const char* sqliteVersion = reinterpret_cast<const char*>(sqlite3_column_text(pingStatement, 0));
+    std::cout << "SQLite Version: " << sqliteVersion << std::endl;
+
+    // Don't forget to finalize the statement
+    sqlite3_finalize(pingStatement);
+
+    return true;
+}
+
+bool SqliteWrap::get_database_name(std::string &db_name)
+{
+    sqlite3_stmt* statement;
+    const char* sql = "PRAGMA database_list;";
+    if (sqlite3_prepare_v2(_db, sql, -1, &statement, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            const char* n = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
+            std::cout << "Database Name: " << n << std::endl;
+            db_name = n;
+        }
+        sqlite3_finalize(statement);
+    } else {
+        std::cerr << "Error executing PRAGMA query." << std::endl;
+    }
+
+    //sqlite3_close(_db);
+
+    return true;
+}
+
+bool SqliteWrap::get_database_schema(const std::string& pathfile)
+{
+    const char* query = "SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'view');";
+    sqlite3_stmt* statement = nullptr;
+
+    // Open the file for writing
+    std::ofstream outputFile(pathfile, std::ios::out);
+    if (!outputFile.is_open()) {
+        std::cerr << "Error: Unable to open the file for writing." << std::endl;
+        return false;
+    }
+
+    // Execute the query
+    sqlite3_prepare_v2(_db, query, -1, &statement, 0);
+
+    int rc;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        // Retrieve and store the table name and SQL definition
+        const char* tableName = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
+        const char* sqlDefinition = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
+
+        // Save to the file
+        //outputFile << "Table Name: " << tableName << "\n";
+        outputFile << "@@@sql@@@\n" << sqlDefinition << "\n";
+    }
+
+    // Check for errors or no tables found
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        sqlite3_finalize(statement);
+        outputFile.close();
+        return false;
+    }
+
+    // Don't forget to finalize the statement
+    sqlite3_finalize(statement);
+
+    // Close the file
+    outputFile.close();
+
+    return true;
+}
+
+bool SqliteWrap::execute_sql_schema(const std::string& pathfile)
+{
+    std::ifstream file(pathfile);
+    if (!file.is_open())
+    {
+        std::cerr << "Error: Unable to open file " << pathfile << std::endl;
+        return false;
+    }
+
+    std::string sqlSeparator = "@@@sql@@@";
+    std::string line;
+    std::stringstream sqlBuffer;
+    std::vector<std::string> sqlCommands;
+
+    // Read the file line by line
+    while (std::getline(file, line))
+    {
+        if (line == sqlSeparator)
+        {
+            // Store the accumulated SQL command
+            sqlCommands.push_back(sqlBuffer.str());
+            sqlBuffer.str("");
+        }
+        else
+        {
+            // Accumulate lines to form a complete SQL command
+            sqlBuffer << line << '\n';
+        }
+    }
+
+    // Check if there's a command in the buffer after reading the last line
+    if (!sqlBuffer.str().empty())
+    {
+        // Store the last accumulated SQL command
+        sqlCommands.push_back(sqlBuffer.str());
+    }
+
+    // Execute each SQL command
+    for (const std::string& sql : sqlCommands)
+    {
+        if (!execute_sql(sql))
+        {
+            std::cerr << "Error executing SQL command: " << sql << std::endl;
+            return false;
+        }
+    }
+
+    return true;
+}
 
 
 
