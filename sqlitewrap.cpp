@@ -6,31 +6,30 @@
 
 #include "sqlitewrap.h"
 
+
 SqliteWrap::SqliteWrap() {}
+
 
 bool SqliteWrap::connect(const std::string &db_name)
 {
-    // Check if the database file already exists
-    if (!std::filesystem::exists(db_name))
+    if (!std::filesystem::exists(db_name))      // database file already exists ?
     {
         std::cerr << "Error: Database file does not exist: " << db_name << std::endl;
-        return false;  // Return an error without attempting to connect
+        return false;
     }
 
-    // Implement SQLite database connection logic using C++17 features
     int rc = sqlite3_open_v2(db_name.c_str(), &_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
 
     if (rc != SQLITE_OK)
     {
-        // Handle connection error
         std::cerr << "Error opening database: " << sqlite3_errmsg(_db) << std::endl;
         return false;
     }
 
-    // Connection successful
     std::cout << "Connected to database: " << db_name << std::endl;
     return true;
 }
+
 
 void SqliteWrap::connect_(const std::string &db_name)
 {
@@ -63,15 +62,70 @@ void SqliteWrap::connect_(const std::string &db_name)
     }
 }
 
+
+bool SqliteWrap::disconnect()
+{
+    if (!_db)
+    {
+        std::cerr << "Error: Database not connected." << std::endl;
+        return false;
+    }
+
+    int rc = sqlite3_close(_db);
+
+    if (rc != SQLITE_OK)
+    {
+        std::cerr << "Error closing database: " << sqlite3_errmsg(_db) << std::endl;
+        return false;
+    }
+
+    _db = nullptr;
+
+    return true;
+}
+
+
+bool SqliteWrap::disconnect_()
+{
+    try
+    {
+        if (!_db)
+        {
+            throw std::runtime_error("Error: Database not connected.");
+        }
+
+        int rc = sqlite3_close(_db);
+
+        if (rc != SQLITE_OK)
+        {
+            throw std::runtime_error("Error closing database: " + std::string(sqlite3_errmsg(_db)));
+        }
+
+        _db = nullptr;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << std::endl;
+        throw std::runtime_error("Error disconnecting database: " + std::string(e.what()));
+    }
+
+    return true;
+}
+
+
 bool SqliteWrap::exists(const std::string &db_name)
 {
     return std::filesystem::exists(db_name);
 }
 
+
 bool SqliteWrap::create_db(const std::string &db_name)
 {
-    // Already exists
-    if (std::filesystem::exists(db_name)) return false;
+    if (std::filesystem::exists(db_name))   // database file already exists ?
+    {
+        std::cerr << "Error: Database file already exist: " << db_name << std::endl;
+        return false;
+    }
 
     // Implement SQLite database connection logic using C++17 features
     int rc = sqlite3_open_v2(db_name.c_str(), &_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
@@ -88,20 +142,20 @@ bool SqliteWrap::create_db(const std::string &db_name)
     return true;
 }
 
+
 bool SqliteWrap::delete_db(const std::string &db_name)
 {
-    // Check if the database file already exists
-    if (!std::filesystem::exists(db_name))
+    if (!std::filesystem::exists(db_name))   // database file already exists ?
     {
         std::cerr << "Error: Database file does not exist: " << db_name << std::endl;
         return false;  // Return an error without attempting to connect
     }
 
-    // Delete the database file
-    std::filesystem::remove(db_name);
+    std::filesystem::remove(db_name);  // Delete the database file
 
     return true;
 }
+
 
 bool SqliteWrap::execute_sql(const std::string &sql)
 {
@@ -125,6 +179,7 @@ bool SqliteWrap::execute_sql(const std::string &sql)
 
     return true;
 }
+
 
 bool SqliteWrap::select_count_sync (const std::string &table, const std::string &condition, int &count)
 {
@@ -195,6 +250,7 @@ bool SqliteWrap::select(const std::string &table, const std::string &condition, 
     return true;
 }
 
+
 bool SqliteWrap::select_sync(const std::string &table, const std::string &condition, void* user_param, DeserializeCallback callback )
 {
     if (!_db)
@@ -256,19 +312,22 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
     return true;
 }
 
-bool SqliteWrap::get_table_list(std::string& query, std::vector<std::string>& tablelist)
+
+bool SqliteWrap::get_table_list(std::vector<std::string>& table_list)
 {
     //const char* query = "SELECT name FROM sqlite_master WHERE type='table';";
+    const char* query = "SELECT name FROM sqlite_master WHERE type IN ('table', 'view');";
+
     sqlite3_stmt* statement = nullptr;
 
-    sqlite3_prepare_v2(_db, query.c_str(), -1, &statement, 0);
+    sqlite3_prepare_v2(_db, query, -1, &statement, 0);
 
     int rc;
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
         // Retrieve and store the table name
         const char* t = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
         std::cout << "Table Name: " << t << std::endl;
-        tablelist.push_back(t);
+        table_list.push_back(t);
     }
 
     // Check for errors or no tables found
@@ -283,6 +342,7 @@ bool SqliteWrap::get_table_list(std::string& query, std::vector<std::string>& ta
 
     return true;
 }
+
 
 bool SqliteWrap::get_sqlite_version(std::string &version)
 {
@@ -309,6 +369,7 @@ bool SqliteWrap::get_sqlite_version(std::string &version)
     return true;
 }
 
+
 bool SqliteWrap::get_database_name(std::string &db_name)
 {
     sqlite3_stmt* statement;
@@ -324,10 +385,9 @@ bool SqliteWrap::get_database_name(std::string &db_name)
         std::cerr << "Error executing PRAGMA query." << std::endl;
     }
 
-    //sqlite3_close(_db);
-
     return true;
 }
+
 
 bool SqliteWrap::get_database_schema(const std::string& pathfile)
 {
@@ -350,9 +410,8 @@ bool SqliteWrap::get_database_schema(const std::string& pathfile)
         const char* tableName = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
         const char* sqlDefinition = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
 
-        // Save to the file
         //outputFile << "Table Name: " << tableName << "\n";
-        outputFile << "@@@sql@@@\n" << sqlDefinition << "\n";
+        outputFile << "@@@sql@@@\n" << sqlDefinition << "\n";   // Save to the file
     }
 
     // Check for errors or no tables found
@@ -363,14 +422,12 @@ bool SqliteWrap::get_database_schema(const std::string& pathfile)
         return false;
     }
 
-    // Don't forget to finalize the statement
     sqlite3_finalize(statement);
-
-    // Close the file
     outputFile.close();
 
     return true;
 }
+
 
 bool SqliteWrap::execute_sql_schema(const std::string& pathfile)
 {
@@ -421,6 +478,70 @@ bool SqliteWrap::execute_sql_schema(const std::string& pathfile)
 
     return true;
 }
+
+
+bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<std::vector<std::tuple<std::unique_ptr<std::string>, std::unique_ptr<std::string>, std::unique_ptr<std::string>>>> &table_content)
+{
+    if (!_db)
+    {
+        std::cerr << "Error: Database not connected." << std::endl;
+        return false;
+    }
+
+    std::string sql = "SELECT * FROM " + table_name + ";";
+
+    sqlite3_stmt *statement = nullptr;
+    sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0); // prepare our query
+
+    int rc;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) // execute sqlite3_step while there are rows to be fetched
+    {
+        int column_count = sqlite3_column_count(statement);
+
+        std::vector<std::tuple<std::unique_ptr<std::string>, std::unique_ptr<std::string>, std::unique_ptr<std::string>>> row_data;
+
+        for (int i = 0; i < column_count; i++)
+        {
+            std::string col_name = sqlite3_column_name(statement, i);
+            std::string col_value = "";
+            const unsigned char* ptr = sqlite3_column_text(statement, i);
+            if (ptr == nullptr) col_value = "null";
+            else col_value = reinterpret_cast<const char *>(sqlite3_column_text(statement, i));
+            std::string col_type = "unknown";
+            if (sqlite3_column_type(statement, i) == SQLITE_INTEGER) col_type = "int";
+            else if (sqlite3_column_type(statement, i) == SQLITE_FLOAT) col_type = "float";
+            else if (sqlite3_column_type(statement, i) == SQLITE_BLOB) col_type = "blob";
+            else if (sqlite3_column_type(statement, i) == SQLITE_TEXT) col_type = "string";
+            else if (sqlite3_column_type(statement, i) == SQLITE_NULL) col_type = "null";
+            else col_type = "error";
+
+            std::string log = "SqliteWrap::... - Column " + std::to_string(i) + " : " + col_name + " (" + col_type + ") = " + col_value;
+            std::cout << log << std::endl;
+
+            // Use std::make_unique to create std::unique_ptr instances
+            auto col_name_ptr = std::make_unique<std::string>(col_name);
+            auto col_type_ptr = std::make_unique<std::string>(col_type);
+            auto col_value_ptr = std::make_unique<std::string>(col_value);
+
+            // Build tuple : (column_index, column_type, column_value)
+            row_data.push_back(std::make_tuple(std::move(col_name_ptr), std::move(col_type_ptr), std::move(col_value_ptr)));
+        }
+
+        table_content.push_back(std::move(row_data));
+    }
+
+    if (rc != SQLITE_DONE)
+    {
+        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        sqlite3_finalize(statement); // free our statement
+        return false;
+    }
+
+    sqlite3_finalize(statement); // free our statement
+
+    return true;
+}
+
 
 
 
