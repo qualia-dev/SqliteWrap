@@ -40,7 +40,10 @@ public:
     bool get_database_schema(const std::string& pathfile);
     bool execute_sql_schema(const std::string& pathfile);
 
+    // Smart pointer version
     bool get_table_content(const std::string &table_name, std::vector<std::vector<std::tuple<std::unique_ptr<std::string>, std::unique_ptr<std::string>, std::unique_ptr<std::string>>>> &table_content);
+    // No smart pointer version
+    bool get_table_content_(const std::string &table_name, std::vector<std::vector<std::tuple<std::string, std::string, std::string>>> &table_content);
 
 private:
     sqlite3* _db = nullptr;

@@ -482,6 +482,8 @@ bool SqliteWrap::execute_sql_schema(const std::string& pathfile)
 
 bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<std::vector<std::tuple<std::unique_ptr<std::string>, std::unique_ptr<std::string>, std::unique_ptr<std::string>>>> &table_content)
 {
+    // Smart pointers version
+
     if (!_db)
     {
         std::cerr << "Error: Database not connected." << std::endl;
@@ -528,6 +530,65 @@ bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<st
         }
 
         table_content.push_back(std::move(row_data));
+    }
+
+    if (rc != SQLITE_DONE)
+    {
+        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        sqlite3_finalize(statement); // free our statement
+        return false;
+    }
+
+    sqlite3_finalize(statement); // free our statement
+
+    return true;
+}
+
+bool SqliteWrap::get_table_content_(const std::string &table_name, std::vector<std::vector<std::tuple<std::string, std::string, std::string>>> &table_content)
+{
+    // No Smart pointers version
+
+    if (!_db)
+    {
+        std::cerr << "Error: Database not connected." << std::endl;
+        return false;
+    }
+
+    std::string sql = "SELECT * FROM " + table_name + ";";
+
+    sqlite3_stmt *statement = nullptr;
+    sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0); // prepare our query
+
+    int rc;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) // execute sqlite3_step while there are rows to be fetched
+    {
+        int column_count = sqlite3_column_count(statement);
+
+        std::vector<std::tuple<std::string, std::string, std::string>> row_data;
+
+        for (int i = 0; i < column_count; i++)
+        {
+            std::string col_name = sqlite3_column_name(statement, i);
+            std::string col_value = "";
+            const unsigned char* ptr = sqlite3_column_text(statement, i);
+            if (ptr == nullptr) col_value = "null";
+            else col_value = reinterpret_cast<const char *>(sqlite3_column_text(statement, i));
+            std::string col_type = "unknown";
+            if (sqlite3_column_type(statement, i) == SQLITE_INTEGER) col_type = "int";
+            else if (sqlite3_column_type(statement, i) == SQLITE_FLOAT) col_type = "float";
+            else if (sqlite3_column_type(statement, i) == SQLITE_BLOB) col_type = "blob";
+            else if (sqlite3_column_type(statement, i) == SQLITE_TEXT) col_type = "string";
+            else if (sqlite3_column_type(statement, i) == SQLITE_NULL) col_type = "null";
+            else col_type = "error";
+
+            std::string log = "SqliteWrap::... - Column " + std::to_string(i) + " : " + col_name + " (" + col_type + ") = " + col_value;
+            std::cout << log << std::endl;
+
+            // creta tuple with (col_name, col_value, col_type)
+            row_data.push_back(std::make_tuple(col_name, col_type, col_value));
+        }
+
+        table_content.push_back(row_data);
     }
 
     if (rc != SQLITE_DONE)
