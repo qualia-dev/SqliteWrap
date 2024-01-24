@@ -171,7 +171,7 @@ bool SqliteWrap::execute_sql(const std::string &sql)
 
     if (rc != SQLITE_OK)
     {
-        std::cerr << "SQL error: " << errorMessage << std::endl;
+        std::cerr << "SqliteWrap::execute_sql(...) - sql : " << sql << " - SQL error: " << errorMessage << std::endl;
         _last_error = errorMessage;
         sqlite3_free(errorMessage);
         return false;
@@ -255,7 +255,7 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
 {
     if (!_db)
     {
-        std::cerr << "Error: Database not connected." << std::endl;
+        std::cerr << "SqliteWrap::select_syn(...) - Error: Database not connected." << std::endl;
         return false;
     }
 
@@ -264,8 +264,9 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
     sql += ";";
 
     sqlite3_stmt *statement = nullptr;
-
     sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0);        // prepare our query
+
+    std::cout << "SqliteWrap::select_syn(...) - SqliteWrap::select_sync - sql = " << sql << std::endl;
 
     int rc;
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW)            // execute sqlite3_step while there are rows to be fetched
@@ -299,10 +300,9 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
         delete[] col_values;
     }
 
-    std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
-
     if (rc != SQLITE_DONE)
     {
+        std::cerr << "SqliteWrap::select_syn(...) - Error: " << sqlite3_errmsg(_db) << std::endl;
         sqlite3_finalize(statement);                 // free our statement
         return false;
     }
@@ -315,8 +315,7 @@ bool SqliteWrap::select_sync(const std::string &table, const std::string &condit
 
 bool SqliteWrap::get_table_list(std::vector<std::string>& table_list)
 {
-    //const char* query = "SELECT name FROM sqlite_master WHERE type='table';";
-    const char* query = "SELECT name FROM sqlite_master WHERE type IN ('table', 'view');";
+    const char* query = "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name;";
 
     sqlite3_stmt* statement = nullptr;
 
@@ -326,7 +325,7 @@ bool SqliteWrap::get_table_list(std::vector<std::string>& table_list)
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
         // Retrieve and store the table name
         const char* t = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
-        std::cout << "Table Name: " << t << std::endl;
+        //std::cout << "Table Name: " << t << std::endl;
         table_list.push_back(t);
     }
 
@@ -354,14 +353,14 @@ bool SqliteWrap::get_sqlite_version(std::string &version)
     int rc = sqlite3_step(pingStatement);
 
     if (rc != SQLITE_ROW) {
-        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        std::cerr << "SqliteWrap::get_table_list(...) - Error: " << sqlite3_errmsg(_db) << std::endl;
         sqlite3_finalize(pingStatement); // Don't forget to finalize the statement
         return false;
     }
 
     // Retrieve and print the SQLite version
     const char* sqliteVersion = reinterpret_cast<const char*>(sqlite3_column_text(pingStatement, 0));
-    std::cout << "SQLite Version: " << sqliteVersion << std::endl;
+    std::cout << "SqliteWrap::get_table_list(...) - SQLite Version: " << sqliteVersion << std::endl;
 
     // Don't forget to finalize the statement
     sqlite3_finalize(pingStatement);
@@ -377,12 +376,12 @@ bool SqliteWrap::get_database_name(std::string &db_name)
     if (sqlite3_prepare_v2(_db, sql, -1, &statement, nullptr) == SQLITE_OK) {
         while (sqlite3_step(statement) == SQLITE_ROW) {
             const char* n = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
-            std::cout << "Database Name: " << n << std::endl;
+            std::cout << "SqliteWrap::get_database_name(...) - Database Name: " << n << std::endl;
             db_name = n;
         }
         sqlite3_finalize(statement);
     } else {
-        std::cerr << "Error executing PRAGMA query." << std::endl;
+        std::cerr << "SqliteWrap::get_database_name(...) - Error executing PRAGMA query." << std::endl;
     }
 
     return true;
@@ -397,7 +396,7 @@ bool SqliteWrap::get_database_schema(const std::string& pathfile)
     // Open the file for writing
     std::ofstream outputFile(pathfile, std::ios::out);
     if (!outputFile.is_open()) {
-        std::cerr << "Error: Unable to open the file for writing." << std::endl;
+        std::cerr << "get_database_schema(...) - Error: Unable to open the file for writing." << std::endl;
         return false;
     }
 
@@ -408,6 +407,9 @@ bool SqliteWrap::get_database_schema(const std::string& pathfile)
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
         // Retrieve and store the table name and SQL definition
         const char* tableName = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
+        // if table name == sqlite_sequence => continue
+        if (strcmp(tableName, "sqlite_sequence") == 0)
+            continue;
         const char* sqlDefinition = reinterpret_cast<const char*>(sqlite3_column_text(statement, 1));
 
         //outputFile << "Table Name: " << tableName << "\n";
@@ -416,7 +418,7 @@ bool SqliteWrap::get_database_schema(const std::string& pathfile)
 
     // Check for errors or no tables found
     if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
-        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        std::cerr << "get_database_schema(...) - Error: " << sqlite3_errmsg(_db) << std::endl;
         sqlite3_finalize(statement);
         outputFile.close();
         return false;
@@ -429,8 +431,10 @@ bool SqliteWrap::get_database_schema(const std::string& pathfile)
 }
 
 
-bool SqliteWrap::execute_sql_schema(const std::string& pathfile)
+bool SqliteWrap::execute_sql_file(const std::string& pathfile)
 {
+    std::cout << "SqliteWrap::execute_sql_file(...) - pathfile = " << pathfile << std::endl;
+
     std::ifstream file(pathfile);
     if (!file.is_open())
     {
@@ -471,7 +475,7 @@ bool SqliteWrap::execute_sql_schema(const std::string& pathfile)
     {
         if (!execute_sql(sql))
         {
-            std::cerr << "Error executing SQL command: " << sql << std::endl;
+            std::cerr << "SqliteWrap::execute_sql_file(...) - Error executing SQL command: " << sql << std::endl;
             return false;
         }
     }
@@ -486,7 +490,7 @@ bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<st
 
     if (!_db)
     {
-        std::cerr << "Error: Database not connected." << std::endl;
+        std::cerr << "get_table_content(...) - Error: Database not connected." << std::endl;
         return false;
     }
 
@@ -494,6 +498,8 @@ bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<st
 
     sqlite3_stmt *statement = nullptr;
     sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0); // prepare our query
+
+    std::cout << "SqliteWrap::get_table_content (smart pointers) - sql = " << sql << std::endl;
 
     int rc;
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) // execute sqlite3_step while there are rows to be fetched
@@ -517,9 +523,6 @@ bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<st
             else if (sqlite3_column_type(statement, i) == SQLITE_NULL) col_type = "null";
             else col_type = "error";
 
-            std::string log = "SqliteWrap::... - Column " + std::to_string(i) + " : " + col_name + " (" + col_type + ") = " + col_value;
-            std::cout << log << std::endl;
-
             // Use std::make_unique to create std::unique_ptr instances
             auto col_name_ptr = std::make_unique<std::string>(col_name);
             auto col_type_ptr = std::make_unique<std::string>(col_type);
@@ -534,7 +537,7 @@ bool SqliteWrap::get_table_content(const std::string &table_name, std::vector<st
 
     if (rc != SQLITE_DONE)
     {
-        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        std::cerr << "get_table_content(...) - Error: " << sqlite3_errmsg(_db) << std::endl;
         sqlite3_finalize(statement); // free our statement
         return false;
     }
@@ -548,9 +551,15 @@ bool SqliteWrap::get_table_content_(const std::string &table_name, std::vector<s
 {
     // No Smart pointers version
 
+    if (table_name.empty())
+    {
+        std::cerr << "get_table_content_(...) - Error: Table name is empty." << std::endl;
+        return false;
+    }
+
     if (!_db)
     {
-        std::cerr << "Error: Database not connected." << std::endl;
+        std::cerr << "get_table_content_(...) - Error: Database not connected." << std::endl;
         return false;
     }
 
@@ -558,6 +567,8 @@ bool SqliteWrap::get_table_content_(const std::string &table_name, std::vector<s
 
     sqlite3_stmt *statement = nullptr;
     sqlite3_prepare_v2(_db, sql.c_str(), -1, &statement, 0); // prepare our query
+
+    std::cout << "SqliteWrap::get_table_content_ - sql = " << sql << std::endl;
 
     int rc;
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) // execute sqlite3_step while there are rows to be fetched
@@ -581,9 +592,6 @@ bool SqliteWrap::get_table_content_(const std::string &table_name, std::vector<s
             else if (sqlite3_column_type(statement, i) == SQLITE_NULL) col_type = "null";
             else col_type = "error";
 
-            std::string log = "SqliteWrap::... - Column " + std::to_string(i) + " : " + col_name + " (" + col_type + ") = " + col_value;
-            std::cout << log << std::endl;
-
             // creta tuple with (col_name, col_value, col_type)
             row_data.push_back(std::make_tuple(col_name, col_type, col_value));
         }
@@ -593,7 +601,7 @@ bool SqliteWrap::get_table_content_(const std::string &table_name, std::vector<s
 
     if (rc != SQLITE_DONE)
     {
-        std::cerr << "Error: " << sqlite3_errmsg(_db) << std::endl;
+        std::cerr << "get_table_content_(...) - Error: " << sqlite3_errmsg(_db) << std::endl;
         sqlite3_finalize(statement); // free our statement
         return false;
     }
